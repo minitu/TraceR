@@ -381,16 +381,10 @@ tw_stime exec_task(
     bool needPost = false, returnAtEnd = false;
     int64_t seq;
     if(t->event_id == TRACER_RECV_POST_EVT) {
+      // Post Irecv
       seq = ns->my_pe->recvSeq[t->myEntry.node];
       ns->my_pe->pendingRReqs[t->req_id] = seq;
       ns->my_pe->recvSeq[t->myEntry.node]++;
-#if DEBUG_PRINT
-      if(ns->my_pe_num ==  1222 || ns->my_pe_num == 1217) {
-        printf("%d Post Irecv: %d - %d %d %d %lld \n", ns->my_pe_num, 
-            t->req_id, t->myEntry.node, t->myEntry.msgId.id,
-            t->myEntry.msgId.comm, ns->my_pe->recvSeq[t->myEntry.node]-1);
-      }
-#endif
     }
     if((t->event_id == TRACER_RECV_EVT || t->event_id == TRACER_RECV_COMP_EVT) 
        && !PE_noMsgDep(ns->my_pe, task_id.iter, task_id.taskid)) {
@@ -410,15 +404,9 @@ tw_stime exec_task(
       }
       KeyType::iterator it = ns->my_pe->pendingMsgs.find(key);
       if(it == ns->my_pe->pendingMsgs.end()) {
+        // Could not find the message; either return immediately or post a rendezvous recv
         assert(PE_is_busy(ns->my_pe) == false);
         ns->my_pe->pendingMsgs[key].push_back(task_id.taskid);
-#if DEBUG_PRINT
-        if(1 || ns->my_pe_num == 1024 || ns->my_pe_num == 11788) {
-        printf("%d PUSH recv: %d - %d %d %d %lld %lld %d\n", ns->my_pe_num, 
-            task_id.taskid, t->myEntry.node, t->myEntry.msgId.id,
-            t->myEntry.msgId.comm, seq, ns->my_pe->recvSeq[t->myEntry.node]-1, t->event_id == TRACER_RECV_EVT);
-        }
-#endif
         b->c21 = 1;
         if(!needPost) {
           return 0;
@@ -426,14 +414,8 @@ tw_stime exec_task(
           returnAtEnd = true;
         }
       } else {
+        // Found message, recv matched!
         b->c22 = 1;
-#if DEBUG_PRINT
-        if(ns->my_pe_num ==  1222 || ns->my_pe_num == 1217) {
-        printf("%d Recv matched: %d - %d %d %d %lld, %lld %d\n", ns->my_pe_num, 
-            task_id.taskid, t->myEntry.node, t->myEntry.msgId.id,
-            t->myEntry.msgId.comm, seq, ns->my_pe->recvSeq[t->myEntry.node]-1, t->event_id == TRACER_RECV_EVT);
-        }
-#endif
         assert(it->second.front() == -1);
         ns->my_pe->pendingMsgs[key].pop_front();
         if(it->second.size() == 0) {
@@ -444,14 +426,10 @@ tw_stime exec_task(
     if(t->myEntry.node != ns->my_pe_num && 
        t->myEntry.msgId.size > eager_limit &&
        (t->event_id == TRACER_RECV_POST_EVT || needPost)) {
+      // For rendezvous messaging, send a 16 byte message to set it up
       m->model_net_calls++;
       send_msg(ns, 16, ns->my_pe->currIter, &t->myEntry.msgId, seq,  
         pe_to_lpid(t->myEntry.node, ns->my_job), nic_delay, RECV_POST, lp);
-#if DEBUG_PRINT
-      printf("%d: Recv post %d %d %d %d\n", ns->my_pe_num, 
-          t->myEntry.node, t->myEntry.msgId.id, t->myEntry.msgId.comm, 
-          seq);
-#endif
       recvFinishTime += nic_delay;
     }
     if(returnAtEnd) return 0;
@@ -459,11 +437,7 @@ tw_stime exec_task(
 
     //Executing the task, set the pe as busy
     PE_set_busy(ns->my_pe, true);
-#if DEBUG_PRINT
-    if(1 || ns->my_pe_num == 1024 || ns->my_pe_num == 11788) {
-      printf("%d Set busy true %d\n", ns->my_pe_num, task_id.taskid);
-    }
-#endif
+
     //Mark the execution time of the task
     tw_stime time = PE_getTaskExecTime(ns->my_pe, task_id.taskid);
     ns->my_pe->taskExecuted[task_id.iter][task_id.taskid] = true;
@@ -620,18 +594,13 @@ tw_stime exec_task(
       sendOffset = soft_delay_mpi;
 
       if(node == ns->my_pe_num) {
+        // Sending to self
         exec_comp(ns, task_id.iter, MsgEntry_getID(taskEntry), 
           taskEntry->msgId.comm, sendOffset+copyTime+delay, 1, lp);
         sendFinishTime = sendOffset + copyTime;
       } else {
-#if DEBUG_PRINT
-        if(ns->my_pe_num ==  1222 || ns->my_pe_num == 1217) {
-          printf("%d SEND to: %d  %d %d %lld\n", ns->my_pe_num, node, 
-            taskEntry->msgId.id, taskEntry->msgId.comm, ns->my_pe->sendSeq[node]);
-        }
-#endif
-
         if(isCopying) {
+          // Remote eager
           m->model_net_calls++;
           send_msg(ns, MsgEntry_getSize(taskEntry),
               task_id.iter, &taskEntry->msgId, ns->my_pe->sendSeq[node]++,
@@ -639,6 +608,7 @@ tw_stime exec_task(
               RECV_MSG, lp);
           sendFinishTime = sendOffset+copyTime;
         } else {
+          // Remote rendezvous
           b->c24 = 1;
           taskEntry->msgId.seq = ns->my_pe->sendSeq[node]++;
           if(t->isNonBlocking) {
@@ -674,7 +644,7 @@ tw_stime exec_task(
       }
     }
    
-    //print event
+    // Print region
     if(t->event_id >= 0) {
       char str[1000];
       if(t->beginEvent) {

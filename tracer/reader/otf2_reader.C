@@ -390,7 +390,7 @@ callbackIrecv(OTF2_LocationRef locationID,
   new_task.event_id = TRACER_USER_EVT;
   new_task.req_id = requestID;
   new_task.isNonBlocking = true;;
-  ((AllData *)userData)->matchRecvIds[requestID] = ld->tasks.size() - 1;
+  ((AllData *)userData)->matchRecvIds[requestID] = ld->tasks.size() - 1; // store request ID & task index pair
 #endif
   ld->lastLogTime = time;
   return OTF2_CALLBACK_SUCCESS;
@@ -412,6 +412,7 @@ callbackIrecvCompEvt(OTF2_LocationRef locationID,
 #if NO_COMM_BUILD
   addEmptyUserEvt(userData);
 #else
+  // Add Irecv completion event
   AllData *globalData = (AllData *)userData;
   ld->tasks.push_back(Task());
   Task &new_task = ld->tasks[ld->tasks.size() - 1];
@@ -428,6 +429,7 @@ callbackIrecvCompEvt(OTF2_LocationRef locationID,
   new_task.isNonBlocking = false;
   new_task.req_id = requestID;
 
+  // Update Irecv post task to fill in details
   std::map<int, int>::iterator it = ((AllData *)userData)->matchRecvIds.find(requestID);
   assert(it != ((AllData *)userData)->matchRecvIds.end());
   Task &postTask = ld->tasks[it->second];
