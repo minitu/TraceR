@@ -39,6 +39,7 @@ extern "C" {
 #include "tracer-driver.h"
 
 char tracer_input[256]; /* filename for tracer input file */
+char trace_dir[256]; /* folder where traces are located */
 
 CoreInf *global_rank;   /* core to job ID and process ID */
 JobInf *jobs;
@@ -118,15 +119,17 @@ int main(int argc, char **argv)
     if(argc < 2 && rank == 0)
     {
       printf("\nUSAGE: \n");
-      printf("\tmpirun -n <arg> ./TraceR --sync=3 --nkp=16 --extramem=100000 --max-opt-lookahead=1000000 --timer-frequency=1000 -- <net.conf> <tracer.conf>\n\n");
+      printf("\tmpirun -n <arg> ./TraceR --sync=3 --nkp=16 --extramem=100000 --max-opt-lookahead=1000000 --timer-frequency=1000 -- <net.conf> <tracer.conf> <trace dir>\n\n");
       assert(0);
     }
 
     strncpy(tracer_input, argv[2], strlen(argv[2]) + 1);
+    strncpy(trace_dir, argv[3], strlen(argv[3]) + 1);
 
     if(!rank) {
         printf("Config file is %s\n", argv[1]);
         printf("Trace input file is %s\n", tracer_input);
+        printf("Trace directory is %s\n", trace_dir);
     }
 
     configuration_load(argv[1], MPI_COMM_WORLD, &config);
@@ -247,7 +250,9 @@ int main(int argc, char **argv)
         fscanf(jobIn, "%s", tempTrace);
         sprintf(jobs[i].traceDir, "%s%s", tempTrace, "/bgTrace");
 #else
-        fscanf(jobIn, "%s", jobs[i].traceDir);
+        char unused[256];
+        fscanf(jobIn, "%s", unused);
+        strncpy(jobs[i].traceDir, trace_dir, strlen(trace_dir) + 1);
 #endif
         fscanf(jobIn, "%s", jobs[i].map_file);
         fscanf(jobIn, "%d", &jobs[i].numRanks); /* number of processes */
